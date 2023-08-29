@@ -209,9 +209,9 @@ open class SelectorPreviewFragment : BaseSelectorFragment() {
     }
 
     open fun initNavbarBar() {
-        val media = getPreviewWrap().source[getPreviewWrap().position]
+        val media: LocalMedia? = if(getPreviewWrap().source.isNotEmpty()) getPreviewWrap().source[getPreviewWrap().position] else null
         mTvEditor?.visibility =
-            if (!MediaUtils.hasMimeTypeOfAudio(media.mimeType) && config.mListenerInfo.onEditorMediaListener != null) View.VISIBLE else View.GONE
+            if (media != null && !MediaUtils.hasMimeTypeOfAudio(media.mimeType) && config.mListenerInfo.onEditorMediaListener != null) View.VISIBLE else View.GONE
         mTvEditor?.setOnClickListener {
             onEditorClick(it)
         }
