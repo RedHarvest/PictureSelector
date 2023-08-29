@@ -24,13 +24,18 @@ object MediaStoreUtils {
                 "${Environment.DIRECTORY_DCIM}/Camera"
             )
         }
-        return if (Environment.getExternalStorageState() == Environment.MEDIA_MOUNTED) {
-            context.contentResolver
-                .insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-        } else {
-            context.contentResolver
-                .insert(MediaStore.Images.Media.INTERNAL_CONTENT_URI, values)
+        return try {
+            if (Environment.getExternalStorageState() == Environment.MEDIA_MOUNTED) {
+                context.contentResolver
+                    .insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+            } else {
+                context.contentResolver
+                    .insert(MediaStore.Images.Media.INTERNAL_CONTENT_URI, values)
+            }
+        } catch (e: Exception) {
+            null
         }
+
     }
 
     fun insertVideo(context: Context, fileName: String): Uri? {

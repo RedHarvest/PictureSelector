@@ -46,12 +46,15 @@ open class MediaPagingLoaderImpl(val application: Application) : MediaLoader() {
             MediaType.ALL -> { // query the image or video
                 "($MEDIA_TYPE=?${getImageMimeTypeCondition()} OR $MEDIA_TYPE=?${getVideoMimeTypeCondition()} AND $duration) AND $fileSize"
             }
+
             MediaType.IMAGE -> { // query the image
                 "$MEDIA_TYPE=?${getImageMimeTypeCondition()} AND $fileSize"
             }
+
             MediaType.VIDEO -> { // query the video
                 "$MEDIA_TYPE=?${getVideoMimeTypeCondition()} AND $duration"
             }
+
             MediaType.AUDIO -> { // query the audio
                 "$MEDIA_TYPE=?${getAudioMimeTypeCondition()} AND $duration"
             }
@@ -69,6 +72,7 @@ open class MediaPagingLoaderImpl(val application: Application) : MediaLoader() {
                     "($MEDIA_TYPE=?${getImageMimeTypeCondition()} OR $MEDIA_TYPE=?${getVideoMimeTypeCondition()} AND $duration) AND $fileSize AND $BUCKET_ID=?"
                 }
             }
+
             MediaType.IMAGE -> { // query the image
                 return if (bucketId == SelectorConstant.DEFAULT_ALL_BUCKET_ID) {
                     "($MEDIA_TYPE=?${getImageMimeTypeCondition()}) AND $fileSize"
@@ -76,6 +80,7 @@ open class MediaPagingLoaderImpl(val application: Application) : MediaLoader() {
                     "($MEDIA_TYPE=?${getImageMimeTypeCondition()}) AND $fileSize AND $BUCKET_ID=?"
                 }
             }
+
             MediaType.VIDEO -> { // query the video
                 return if (bucketId == SelectorConstant.DEFAULT_ALL_BUCKET_ID) {
                     "($MEDIA_TYPE=?${getVideoMimeTypeCondition()} AND $duration) AND $fileSize"
@@ -83,6 +88,7 @@ open class MediaPagingLoaderImpl(val application: Application) : MediaLoader() {
                     "($MEDIA_TYPE=?${getVideoMimeTypeCondition()} AND $duration) AND $fileSize AND $BUCKET_ID=?"
                 }
             }
+
             MediaType.AUDIO -> { // query the audio
                 return if (bucketId == SelectorConstant.DEFAULT_ALL_BUCKET_ID) {
                     "($MEDIA_TYPE=?${getAudioMimeTypeCondition()} AND $duration) AND $fileSize"
@@ -101,12 +107,15 @@ open class MediaPagingLoaderImpl(val application: Application) : MediaLoader() {
                     MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString()
                 )
             }
+
             MediaType.IMAGE -> {
                 return arrayOf(MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString())
             }
+
             MediaType.VIDEO -> {
                 return arrayOf(MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())
             }
+
             MediaType.AUDIO -> {
                 return arrayOf(MediaStore.Files.FileColumns.MEDIA_TYPE_AUDIO.toString())
             }
@@ -151,86 +160,92 @@ open class MediaPagingLoaderImpl(val application: Application) : MediaLoader() {
     override suspend fun loadMediaAlbum(): MutableList<LocalMediaAlbum> {
         val albumList = mutableListOf<LocalMediaAlbum>()
         withContext(Dispatchers.IO) {
-            application.contentResolver.query(
-                getQueryUri(),
-                getProjection(),
-                getAlbumSelection(),
-                getSelectionArgs(), getSortOrder()
-            )?.use { data ->
-                if (data.count > 0) {
-                    var totalCount = 0L
-                    val mediaUnique = LocalMedia()
-                    val bucketSet = hashSetOf<Long>()
-                    val countMap = hashMapOf<Long, Long>()
-                    data.moveToFirst()
-                    do {
-                        val media = parse(mediaUnique, data)
-                        if (config.mListenerInfo.onQueryFilterListener?.onFilter(media) == true) {
-                            continue
-                        }
-                        var newCount = countMap[media.bucketId]
-                        if (newCount == null) {
-                            newCount = 1L
-                        } else {
-                            newCount++
-                        }
-                        countMap[media.bucketId] = newCount
-                        if (bucketSet.contains(media.bucketId)) {
-                            continue
-                        }
-                        val mediaAlbum = LocalMediaAlbum()
-                        mediaAlbum.bucketId = media.bucketId
-                        mediaAlbum.bucketDisplayName = media.bucketDisplayName
-                        mediaAlbum.bucketDisplayCover = media.path
-                        mediaAlbum.bucketDisplayMimeType = media.mimeType
-                        albumList += mediaAlbum
-                        bucketSet.add(media.bucketId)
-                    } while (data.moveToNext())
+            try {
+                application.contentResolver.query(
+                    getQueryUri(),
+                    getProjection(),
+                    getAlbumSelection(),
+                    getSelectionArgs(),
+                    getSortOrder()
+                )?.use { data ->
+                    if (data.count > 0) {
+                        var totalCount = 0L
+                        val mediaUnique = LocalMedia()
+                        val bucketSet = hashSetOf<Long>()
+                        val countMap = hashMapOf<Long, Long>()
+                        data.moveToFirst()
+                        do {
+                            val media = parse(mediaUnique, data)
+                            if (config.mListenerInfo.onQueryFilterListener?.onFilter(media) == true) {
+                                continue
+                            }
+                            var newCount = countMap[media.bucketId]
+                            if (newCount == null) {
+                                newCount = 1L
+                            } else {
+                                newCount++
+                            }
+                            countMap[media.bucketId] = newCount
+                            if (bucketSet.contains(media.bucketId)) {
+                                continue
+                            }
+                            val mediaAlbum = LocalMediaAlbum()
+                            mediaAlbum.bucketId = media.bucketId
+                            mediaAlbum.bucketDisplayName = media.bucketDisplayName
+                            mediaAlbum.bucketDisplayCover = media.path
+                            mediaAlbum.bucketDisplayMimeType = media.mimeType
+                            albumList += mediaAlbum
+                            bucketSet.add(media.bucketId)
+                        } while (data.moveToNext())
 
-                    // create custom sandbox dir media album
-                    config.sandboxDir?.let { sandboxDir ->
-                        val mediaList = loadAppInternalDir(sandboxDir)
-                        if (mediaList.isNotEmpty()) {
-                            mediaList.first().let { firstMedia ->
-                                val sandboxMediaAlbum = LocalMediaAlbum()
-                                sandboxMediaAlbum.bucketId = firstMedia.bucketId
-                                sandboxMediaAlbum.bucketDisplayName = firstMedia.bucketDisplayName
-                                sandboxMediaAlbum.bucketDisplayCover = firstMedia.path
-                                sandboxMediaAlbum.bucketDisplayMimeType = firstMedia.mimeType
-                                sandboxMediaAlbum.totalCount = mediaList.size
-                                sandboxMediaAlbum.source.addAll(mediaList.toMutableList())
-                                albumList.add(sandboxMediaAlbum)
-                                countMap[firstMedia.bucketId] = mediaList.size.toLong()
+                        // create custom sandbox dir media album
+                        config.sandboxDir?.let { sandboxDir ->
+                            val mediaList = loadAppInternalDir(sandboxDir)
+                            if (mediaList.isNotEmpty()) {
+                                mediaList.first().let { firstMedia ->
+                                    val sandboxMediaAlbum = LocalMediaAlbum()
+                                    sandboxMediaAlbum.bucketId = firstMedia.bucketId
+                                    sandboxMediaAlbum.bucketDisplayName =
+                                        firstMedia.bucketDisplayName
+                                    sandboxMediaAlbum.bucketDisplayCover = firstMedia.path
+                                    sandboxMediaAlbum.bucketDisplayMimeType = firstMedia.mimeType
+                                    sandboxMediaAlbum.totalCount = mediaList.size
+                                    sandboxMediaAlbum.source.addAll(mediaList.toMutableList())
+                                    albumList.add(sandboxMediaAlbum)
+                                    countMap[firstMedia.bucketId] = mediaList.size.toLong()
+                                }
                             }
                         }
-                    }
 
-                    // calculate album count
-                    albumList.forEach { mediaAlbum ->
-                        countMap[mediaAlbum.bucketId]?.let { count ->
-                            mediaAlbum.totalCount = count.toInt()
-                            totalCount += mediaAlbum.totalCount
+                        // calculate album count
+                        albumList.forEach { mediaAlbum ->
+                            countMap[mediaAlbum.bucketId]?.let { count ->
+                                mediaAlbum.totalCount = count.toInt()
+                                totalCount += mediaAlbum.totalCount
+                            }
                         }
-                    }
 
-                    // create all media album
-                    val allMediaAlbum = LocalMediaAlbum()
-                    val bucketDisplayName =
-                        config.defaultAlbumName ?: if (config.mediaType == MediaType.AUDIO)
-                            application.getString(R.string.ps_all_audio) else application.getString(
-                            R.string.ps_camera_roll
-                        )
-                    allMediaAlbum.bucketDisplayName = bucketDisplayName
-                    allMediaAlbum.bucketId = SelectorConstant.DEFAULT_ALL_BUCKET_ID
-                    allMediaAlbum.totalCount = totalCount.toInt()
-                    albumList.first().let { firstAlbum ->
-                        allMediaAlbum.bucketDisplayCover = firstAlbum.bucketDisplayCover
-                        allMediaAlbum.bucketDisplayMimeType = firstAlbum.bucketDisplayMimeType
+                        // create all media album
+                        val allMediaAlbum = LocalMediaAlbum()
+                        val bucketDisplayName =
+                            config.defaultAlbumName ?: if (config.mediaType == MediaType.AUDIO)
+                                application.getString(R.string.ps_all_audio) else application.getString(
+                                R.string.ps_camera_roll
+                            )
+                        allMediaAlbum.bucketDisplayName = bucketDisplayName
+                        allMediaAlbum.bucketId = SelectorConstant.DEFAULT_ALL_BUCKET_ID
+                        allMediaAlbum.totalCount = totalCount.toInt()
+                        albumList.first().let { firstAlbum ->
+                            allMediaAlbum.bucketDisplayCover = firstAlbum.bucketDisplayCover
+                            allMediaAlbum.bucketDisplayMimeType = firstAlbum.bucketDisplayMimeType
+                        }
+                        albumList.add(0, allMediaAlbum)
                     }
-                    albumList.add(0, allMediaAlbum)
+                    // close cursor
+                    data.close()
                 }
-                // close cursor
-                data.close()
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
         return albumList.apply {
@@ -256,49 +271,53 @@ open class MediaPagingLoaderImpl(val application: Application) : MediaLoader() {
         pageSize: Int
     ): MutableList<LocalMedia> {
         val mediaList = mutableListOf<LocalMedia>()
-        withContext(Dispatchers.IO) {
-            if (SdkVersionUtils.isR()) {
-                application.contentResolver.query(
-                    getQueryUri(), getProjection(), MediaUtils.createQueryArgsBundle(
+        try {
+            withContext(Dispatchers.IO) {
+                if (SdkVersionUtils.isR()) {
+                    application.contentResolver.query(
+                        getQueryUri(), getProjection(), MediaUtils.createQueryArgsBundle(
+                            getSelection(bucketId),
+                            if (bucketId == SelectorConstant.DEFAULT_ALL_BUCKET_ID) getSelectionArgs() else getSelectionArgs().plusElement(
+                                bucketId.toString()
+                            ), pageSize, (page - 1) * pageSize, getSortOrder()
+                        ), null
+                    )?.use { cursor ->
+                        if (cursor.count > 0) {
+                            while (cursor.moveToNext()) {
+                                val media = parse(LocalMedia(), cursor)
+                                if (config.mListenerInfo.onQueryFilterListener?.onFilter(media) == true) {
+                                    continue
+                                }
+                                mediaList += media
+                            }
+                        }
+                    }
+                } else {
+                    application.contentResolver.query(
+                        getQueryUri(),
+                        getProjection(),
                         getSelection(bucketId),
                         if (bucketId == SelectorConstant.DEFAULT_ALL_BUCKET_ID) getSelectionArgs() else getSelectionArgs().plusElement(
                             bucketId.toString()
-                        ), pageSize, (page - 1) * pageSize, getSortOrder()
-                    ), null
-                )?.use { cursor ->
-                    if (cursor.count > 0) {
-                        while (cursor.moveToNext()) {
-                            val media = parse(LocalMedia(), cursor)
-                            if (config.mListenerInfo.onQueryFilterListener?.onFilter(media) == true) {
-                                continue
+                        ),
+                        getSortOrder() + " limit " + pageSize + " offset " + (page - 1) * pageSize
+                    )?.use { cursor ->
+                        if (cursor.count > 0) {
+                            while (cursor.moveToNext()) {
+                                val media = parse(LocalMedia(), cursor)
+                                if (config.mListenerInfo.onQueryFilterListener?.onFilter(media) == true) {
+                                    continue
+                                }
+                                mediaList += media
                             }
-                            mediaList += media
                         }
+                        // close cursor
+                        cursor.close()
                     }
-                }
-            } else {
-                application.contentResolver.query(
-                    getQueryUri(),
-                    getProjection(),
-                    getSelection(bucketId),
-                    if (bucketId == SelectorConstant.DEFAULT_ALL_BUCKET_ID) getSelectionArgs() else getSelectionArgs().plusElement(
-                        bucketId.toString()
-                    ),
-                    getSortOrder() + " limit " + pageSize + " offset " + (page - 1) * pageSize
-                )?.use { cursor ->
-                    if (cursor.count > 0) {
-                        while (cursor.moveToNext()) {
-                            val media = parse(LocalMedia(), cursor)
-                            if (config.mListenerInfo.onQueryFilterListener?.onFilter(media) == true) {
-                                continue
-                            }
-                            mediaList += media
-                        }
-                    }
-                    // close cursor
-                    cursor.close()
                 }
             }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
         return mediaList
     }
