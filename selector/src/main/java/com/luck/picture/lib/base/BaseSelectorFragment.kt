@@ -271,7 +271,11 @@ abstract class BaseSelectorFragment : Fragment() {
                 // Pop the top state off the back stack. This function is asynchronous
                 // it enqueues the request to pop, but the action will not be performed
                 // until the application returns to its event loop.
-                requireActivity().supportFragmentManager.popBackStack()
+                try {
+                    requireActivity().supportFragmentManager.popBackStack()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
         }
     }
@@ -494,25 +498,32 @@ abstract class BaseSelectorFragment : Fragment() {
         val defaultFileName = "${FileUtils.createFileName("IMG")}.jpg"
         val applyFileNameListener = config.mListenerInfo.onReplaceFileNameListener
         val fileName = applyFileNameListener?.apply(defaultFileName) ?: defaultFileName
-        val outputUri: Uri?
-        if (TextUtils.isEmpty(outputDir)) {
-            // Use default storage path
-            outputUri = MediaStoreUtils.insertImage(context, fileName)!!
+        var outputUri: Uri? = null
+        try {
+            if (TextUtils.isEmpty(outputDir)) {
+                // Use default storage path
+                outputUri = MediaStoreUtils.insertImage(context, fileName)!!
+                viewModel.outputUri = outputUri
+            } else {
+                // Use custom storage path
+                val outputFile = File(outputDir, fileName)
+                outputUri = MediaUtils.parUri(context, outputFile)
+                viewModel.outputUri = Uri.fromFile(outputFile)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
             viewModel.outputUri = outputUri
-        } else {
-            // Use custom storage path
-            val outputFile = File(outputDir, fileName)
-            outputUri = MediaUtils.parUri(context, outputFile)
-            viewModel.outputUri = Uri.fromFile(outputFile)
         }
         val customCameraListener = config.mListenerInfo.onCustomCameraListener
         if (customCameraListener != null) {
-            customCameraListener.onCamera(
-                this,
-                MediaType.IMAGE,
-                outputUri,
-                SelectorConstant.REQUEST_CAMERA
-            )
+            if (outputUri != null) {
+                customCameraListener.onCamera(
+                    this,
+                    MediaType.IMAGE,
+                    outputUri,
+                    SelectorConstant.REQUEST_CAMERA
+                )
+            }
         } else {
             val imageCaptureComponent = config.registry.get(ImageCaptureComponent::class.java)
             if (imageCaptureComponent.isAssignableFrom(ImageCaptureComponent::class.java)) {
